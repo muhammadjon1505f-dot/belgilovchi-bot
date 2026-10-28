@@ -8,8 +8,9 @@ Ushbu bot Telegram guruhlarida a'zolar va administratorlar o'rtasidagi aloqani t
 
 ## ⚡ Asosiy Imkoniyatlar
 
-1. **Adminlarni bir zumda chaqirish (`/admin`, `@admin`, `/admins`):**
-   - Guruhdagi istalgan foydalanuvchi `/admin [sabab]` yoki biron xabarga reply qilib `@admin` deb yozsa, bot guruhdagi barcha inson-adminlarni topib, ularni bir xabarda metka (mention) qiladi.
+1. **Adminlarni bir zumda chaqirish (`@admin`, `@admins`):**
+   - Guruhdagi admin foydalanuvchi `@admin [sabab]` yoki `@admins [sabab]` deb yozsa, bot guruhdagi barcha adminlarni topib, ularni bir xabarda metka (mention) qiladi.
+   - `/admin` buyrug'i olib tashlangan va admin bo'lmagan foydalanuvchilar (unadminlar) uchun ishlamaydi.
    - Barcha adminlarga zudlik bilan push-bildirishnoma (notification) boradi.
    - 20 soniyalik antispam (cooldown) cheklovi mavjud.
 

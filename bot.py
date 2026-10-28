@@ -2,6 +2,7 @@
 Belgilovchi Bot (@Belgilaydibot)
 Guruhlarni boshqarish va adminlarni bir zumda avtomatik metka qilish (chaqirish) boti.
 """
+import re
 import time
 import html
 import logging
@@ -54,6 +55,24 @@ def is_chat_admin(chat_id: int, user_id: int) -> bool:
         logger.error(f"Admin tekshirishda xatolik: {e}")
         return False
 
+def is_sender_admin(message: types.Message) -> bool:
+    """Xabar yuboruvchi admin ekanligini tekshirish (unadminlarni filtrlash)."""
+    chat_id = message.chat.id
+    if message.sender_chat and message.sender_chat.id == chat_id:
+        return True
+    user = message.from_user
+    if not user:
+        return False
+    if user.id in config.ADMIN_IDS:
+        return True
+    return is_chat_admin(chat_id, user.id)
+
+def is_admin_mention(message: types.Message) -> bool:
+    """Faqat @admin yoki @admins yozilganda ushlash (/admin ishlamasin!)."""
+    if message.chat.type not in ("group", "supergroup") or not message.text:
+        return False
+    return bool(re.search(r'(?i)(?<!\w)@admins?\b', message.text))
+
 # ==================== BUYRUQLAR: START VA HELP ====================
 
 @bot.message_handler(commands=["start", "help"])
@@ -66,7 +85,7 @@ def handle_start(message: types.Message):
         bot.reply_to(
             message,
             "👋 <b>Belgilovchi bot guruhda faol!</b>\n\n"
-            "Adminlarni chaqirish uchun <code>/admin</code> yoki <code>@admin</code> deb yozing."
+            "Adminlarni chaqirish uchun <code>@admin</code> yoki <code>@admins</code> deb yozing (faqat adminlar uchun)."
         )
         return
 
@@ -84,20 +103,17 @@ def handle_start(message: types.Message):
         f"⚡ Men Belgilovchi bot (@{bot_info.username}) — guruhlarda adminlarni va a'zolarni "
         f"bir zumda chaqirib (metka / tag qilib) beruvchi professional botman.\n\n"
         f"👑 Guruhda:\n"
-        f"• /admin [sabab] — Barcha adminlarni zudlik bilan chaqiradi.\n"
-        f"• @admin [sabab] — Xabarga javob berib yozilsa, qoidabuzarlik haqida xabar beradi.\n"
+        f"• @admin [sabab] — Barcha adminlarni zudlik bilan chaqiradi (faqat adminlar uchun).\n"
+        f"• @admins [sabab] — Adminlarni chaqirish.\n"
         f"• /tag [xabar] — Guruh a'zolariga e'lon yuborish (faqat adminlar uchun).\n\n"
         f"🚀 Ishlatish: Quyidagi tugma orqali botni guruhingizga qo'shing va adminlik bering!"
     )
     bot.send_message(message.chat.id, text, reply_markup=markup)
 
-# ==================== ADMIN CHAQIRISH (/admin, @admin, /admins) ====================
+# ==================== ADMIN CHAQIRISH (@admin, @admins) ====================
+# /admin buyrug'i olib tashlandi va unadminlar (oddiy userlar) uchun ishlamaydi.
 
-@bot.message_handler(commands=["admin", "admins", "calladmin", "report"])
-def handle_admin_call_command(message: types.Message):
-    trigger_admin_call(message)
-
-@bot.message_handler(func=lambda m: m.chat.type in ("group", "supergroup") and m.text and any(w in m.text.lower() for w in ("@admin", "@admins", "/admin", "/admins")))
+@bot.message_handler(func=is_admin_mention)
 def handle_admin_mention(message: types.Message):
     trigger_admin_call(message)
 
@@ -112,13 +128,20 @@ def trigger_admin_call(message: types.Message):
         bot.reply_to(message, "ℹ️ Bu buyruq faqat guruhlarda ishlaydi. Botni guruhingizga qo'shing!", reply_markup=markup)
         return
 
+    # 0. Faqat adminlar bajara olishini tekshirish (unadminlarda ishlamasin!)
+    if not is_sender_admin(message):
+        logger.info(f"Unadmin foydalanuvchi {getattr(user, 'id', 'anonim')} @admin deb yozdi, e'tiborsiz qoldirildi.")
+        return
+
     # Guruh va a'zoni bazada saqlash
     db.add_or_update_group(chat_id, message.chat.title, message.chat.username)
-    db.track_member_activity(chat_id, user.id, user.first_name, user.username)
+    if user:
+        db.track_member_activity(chat_id, user.id, user.first_name, user.username)
 
     # Cooldown (antispam) tekshirish
     now = time.time()
-    last_call = user_cooldowns.get((chat_id, user.id), 0)
+    user_key = (chat_id, user.id if user else chat_id)
+    last_call = user_cooldowns.get(user_key, 0)
     cooldown = config.ADMIN_CALL_COOLDOWN
 
     # 1. Guruh bo'yicha global antiraid tekshiruvi (1 daqiqada maks 5 chaqiruv)
@@ -133,18 +156,13 @@ def trigger_admin_call(message: types.Message):
         bot.reply_to(message, f"⏳ Iltimos kuting! Siz yana <b>{remaining}</b> soniyadan so'ng adminlarni chaqira olasiz.")
         return
 
-    user_cooldowns[(chat_id, user.id)] = now
+    user_cooldowns[user_key] = now
     group_calls.append(now)
     group_call_history[chat_id] = group_calls
 
-    # Sabab yoki qo'shimcha matnni aniqlash
-    reason = ""
+    # Sabab yoki qo'shimcha matnni aniqlash (@admin yoki @admins olib tashlanadi)
     text = message.text or message.caption or ""
-    parts = text.split(maxsplit=1)
-    if len(parts) > 1 and not parts[0].lower().startswith("@admin"):
-        reason = parts[1].strip()
-    elif "@admin" in text.lower():
-        reason = text.replace("@admin", "").replace("@Admin", "").strip()
+    reason = re.sub(r'(?i)@admins?\b', '', text).strip()
 
     # Guruh adminlarini olish
     try:
@@ -292,7 +310,7 @@ def handle_my_chat_member(update: types.ChatMemberUpdated):
             bot.send_message(
                 chat.id,
                 "🎉 <b>Salom! Men Belgilovchi botman.</b>\n\n"
-                "Guruhda adminlarni chaqirish uchun <code>/admin</code> yoki <code>@admin</code> deb yozing.\n"
+                "Guruhda adminlarni chaqirish uchun <code>@admin</code> yoki <code>@admins</code> deb yozing (faqat adminlar uchun).\n"
                 "A'zolarni metka qilish uchun: <code>/tag</code>\n"
                 "Bot qulay ishlashi uchun unga <b>Adminlik huquqini</b> berishingiz tavsiya etiladi."
             )
