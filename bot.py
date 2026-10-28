@@ -56,7 +56,7 @@ def is_chat_admin(chat_id: int, user_id: int) -> bool:
 
 # ==================== BUYRUQLAR: START VA HELP ====================
 
-@bot.message_handler(commands=["start"])
+@bot.message_handler(commands=["start", "help"])
 def handle_start(message: types.Message):
     user = message.from_user
     db.add_or_update_user(user.id, user.first_name, user.username)
@@ -66,52 +66,31 @@ def handle_start(message: types.Message):
         bot.reply_to(
             message,
             "👋 <b>Belgilovchi bot guruhda faol!</b>\n\n"
-            "Adminlarni chaqirish uchun <code>/admin</code> yoki <code>@admin</code> deb yozing.\n"
-            "Buyruqlar ro'yxati: <code>/help</code>"
+            "Adminlarni chaqirish uchun <code>/admin</code> yoki <code>@admin</code> deb yozing."
         )
         return
 
-    # Shaxsiy chatda xush kelibsiz xabari
-    markup = types.InlineKeyboardMarkup(row_width=1)
+    # Shaxsiy chatda xush kelibsiz xabari — faqat bitta '➕ Guruhga qo'shish' tugmasi bilan
     bot_info = bot.get_me()
+    markup = types.InlineKeyboardMarkup(row_width=1)
     btn_add = types.InlineKeyboardButton(
         "➕ Guruhga qo'shish",
         url=f"https://t.me/{bot_info.username}?startgroup=true"
     )
-    btn_help = types.InlineKeyboardButton("📖 Qo'llanma va Buyruqlar", callback_data="help_menu")
-    btn_stats = types.InlineKeyboardButton("📊 Bot Statistikasi", callback_data="bot_stats")
-    btn_crons = types.InlineKeyboardButton("⏱ 10 ta Avtomatik Cron Holati", callback_data="bot_crons")
-    markup.add(btn_add, btn_help, btn_stats, btn_crons)
+    markup.add(btn_add)
 
     text = (
-        f"👋 <b>Assalomu alaykum, {escape_html(user.first_name)}!</b>\n\n"
-        f"⚡ Men <b>Belgilovchi bot</b> (@{bot_info.username}) — guruhlarda adminlarni va a'zolarni "
+        f"👋 Assalomu alaykum, {escape_html(user.first_name)}!\n\n"
+        f"⚡ Men Belgilovchi bot (@{bot_info.username}) — guruhlarda adminlarni va a'zolarni "
         f"bir zumda chaqirib (metka / tag qilib) beruvchi professional botman.\n\n"
-        f"👑 <b>Guruhda:</b>\n"
-        f"• <code>/admin [sabab]</code> — Barcha adminlarni zudlik bilan chaqiradi.\n"
-        f"• <code>@admin [sabab]</code> — Xabarga javob berib yozilsa, qoidabuzarlik haqida xabar beradi.\n"
-        f"• <code>/tag [xabar]</code> — Guruh a'zolariga e'lon yuborish (faqat adminlar uchun).\n"
-        f"• <code>/stop</code> — Belgilash jarayonini to'xtatish.\n\n"
-        f"🚀 <b>Ishlatish:</b> Quyidagi tugma orqali botni guruhingizga qo'shing va adminlik bering!"
+        f"👑 Guruhda:\n"
+        f"• /admin [sabab] — Barcha adminlarni zudlik bilan chaqiradi.\n"
+        f"• @admin [sabab] — Xabarga javob berib yozilsa, qoidabuzarlik haqida xabar beradi.\n"
+        f"• /tag [xabar] — Guruh a'zolariga e'lon yuborish (faqat adminlar uchun).\n"
+        f"• /stop — Belgilash jarayonini to'xtatish.\n\n"
+        f"🚀 Ishlatish: Quyidagi tugma orqali botni guruhingizga qo'shing va adminlik bering!"
     )
     bot.send_message(message.chat.id, text, reply_markup=markup)
-
-@bot.message_handler(commands=["help"])
-def handle_help(message: types.Message):
-    help_text = (
-        "📖 <b>Belgilovchi bot bo'yicha qo'llanma:</b>\n\n"
-        "1️⃣ <b>Adminlarni chaqirish:</b>\n"
-        "• <code>/admin</code> yoki <code>@admin</code> — guruhdagi barcha inson adminlarga xabar beradi.\n"
-        "• Xabarga reply qilib <code>/admin</code> yozsangiz, o'sha xabar ham adminlarga ko'rsatiladi.\n\n"
-        "2️⃣ <b>A'zolarni metka qilish (Faqat adminlar uchun):</b>\n"
-        "• <code>/tag [e'lon matni]</code> — Guruh a'zolarini navbat bilan belgilab chiqadi.\n"
-        "• <code>/all [matn]</code> — <code>/tag</code> bilan bir xil ishlaydi.\n"
-        "• <code>/stop</code> — Faol belgilash jarayonini to'xtatadi.\n\n"
-        "3️⃣ <b>Muhim eslatma:</b>\n"
-        "Bot xabarlarni to'liq ko'ra olishi va hamma adminlarni tez chaqirishi uchun "
-        "unga guruhda <b>Admin huquqini</b> berishingiz tavsiya etiladi."
-    )
-    bot.reply_to(message, help_text)
 
 # ==================== ADMIN CHAQIRISH (/admin, @admin, /admins) ====================
 
@@ -119,7 +98,7 @@ def handle_help(message: types.Message):
 def handle_admin_call_command(message: types.Message):
     trigger_admin_call(message)
 
-@bot.message_handler(func=lambda m: m.chat.type in ("group", "supergroup") and m.text and "@admin" in m.text.lower())
+@bot.message_handler(func=lambda m: m.chat.type in ("group", "supergroup") and m.text and any(w in m.text.lower() for w in ("@admin", "@admins", "/admin", "/admins")))
 def handle_admin_mention(message: types.Message):
     trigger_admin_call(message)
 
@@ -128,7 +107,10 @@ def trigger_admin_call(message: types.Message):
     user = message.from_user
 
     if message.chat.type not in ("group", "supergroup"):
-        bot.reply_to(message, "ℹ️ Bu buyruq faqat guruhlarda ishlaydi. Botni guruhga qo'shing!")
+        bot_info = bot.get_me()
+        markup = types.InlineKeyboardMarkup(row_width=1)
+        markup.add(types.InlineKeyboardButton("➕ Guruhga qo'shish", url=f"https://t.me/{bot_info.username}?startgroup=true"))
+        bot.reply_to(message, "ℹ️ Bu buyruq faqat guruhlarda ishlaydi. Botni guruhingizga qo'shing!", reply_markup=markup)
         return
 
     # Guruh va a'zoni bazada saqlash
@@ -338,84 +320,6 @@ def handle_my_chat_member(update: types.ChatMemberUpdated):
             logger.error(f"Guruhga xush kelibsiz xabarini yuborib bo'lmadi: {e}")
     elif new_status in ("left", "kicked"):
         db.deactivate_group(chat.id)
-
-# ==================== ADMIN BUYRUQLARI VA STATISTIKA ====================
-
-@bot.message_handler(commands=["crons", "cron"])
-def handle_crons_command(message: types.Message):
-    """Botning 10 ta avtomatik cron vazifalari holatini chiqarish."""
-    crons = cron_manager.get_status_list()
-    lines = [
-        "⏱ <b>Botning 10 ta Avtomatik Ichki Cron Vazifalari:</b>\n"
-    ]
-    for idx, c in enumerate(crons, 1):
-        status_icon = "🟢" if c["status"] in ("OK", "Idle", "Running") else "🔴"
-        interval_min = round(c["interval_sec"] / 60, 1) if c["interval_sec"] >= 60 else f"{c['interval_sec']} soniya"
-        lines.append(
-            f"{status_icon} <b>{c['name']}</b>\n"
-            f"   • Takrorlanish: har <b>{interval_min}</b> da\n"
-            f"   • Bajarildi: <b>{c['run_count']}</b> marta | Holat: <code>{c['status']}</code>\n"
-            f"   • Keyingisi: <b>{c['next_in_sec']}</b> soniyadan keyin\n"
-        )
-    lines.append("⚡ <i>Barcha cron vazifalari to'liq bot ichida fon rejimida 24/7 ishlamoqda.</i>")
-    bot.reply_to(message, "\n".join(lines))
-
-@bot.message_handler(commands=["stats"])
-def handle_stats_command(message: types.Message):
-    user = message.from_user
-    if user.id not in config.ADMIN_IDS:
-        return
-
-    stats = db.get_stats()
-    text = (
-        "📊 <b>Belgilovchi bot statistikasi:</b>\n\n"
-        f"👥 Foydalanuvchilar soni: <b>{stats['total_users']}</b> ta\n"
-        f"👥 Faol guruhlar soni: <b>{stats['total_groups']}</b> ta\n"
-        f"📝 Ro'yxatga olingan guruh a'zolari: <b>{stats['total_tracked_members']}</b> ta\n"
-        f"🚨 Jami admin chaqiruvlari: <b>{stats['total_calls']}</b> ta\n"
-        f"⏱ Ichki Cron Vazifalari: <b>10/10 Faol</b>\n"
-        f"⚡ Holati: <b>24/7 Onlayn</b>"
-    )
-    bot.reply_to(message, text)
-
-# ==================== CALLBACK QUERY LAR ====================
-
-@bot.callback_query_handler(func=lambda call: True)
-def handle_callback(call: types.CallbackQuery):
-    if call.data == "help_menu":
-        help_text = (
-            "📖 <b>Buyruqlar:</b>\n\n"
-            "• <code>/admin [sabab]</code> — Barcha adminlarni chaqiradi.\n"
-            "• <code>@admin</code> — Xabarga javob orqali adminni chaqirish.\n"
-            "• <code>/tag [matn]</code> — Guruh a'zolariga e'lon yuborish (adminlar uchun).\n"
-            "• <code>/stop</code> — Belgilashni to'xtatish.\n"
-            "• <code>/crons</code> — Botning 10 ta avtomatik cron holati.\n\n"
-            "Botni guruhga qo'shing va adminlik huquqini bering!"
-        )
-        bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, help_text)
-    elif call.data == "bot_stats":
-        stats = db.get_stats()
-        text = (
-            f"📊 <b>Bot ko'rsatkichlari:</b>\n\n"
-            f"• Faol guruhlar: <b>{stats['total_groups']}</b> ta\n"
-            f"• Foydalanuvchilar: <b>{stats['total_users']}</b> ta\n"
-            f"• Admin chaqiruvlari: <b>{stats['total_calls']}</b> marta\n"
-            f"• Ichki Cron Vazifalari: <b>10 ta doimiy faol</b>\n"
-            f"• Server: <b>24/7 Faol</b>"
-        )
-        bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, text)
-    elif call.data == "bot_crons":
-        crons = cron_manager.get_status_list()
-        lines = ["⏱ <b>Botning 10 ta Avtomatik Cron Vazifalari:</b>\n"]
-        for c in crons:
-            status_icon = "🟢" if c["status"] in ("OK", "Idle", "Running") else "🔴"
-            interval_str = f"{round(c['interval_sec']/60, 1)} daq" if c["interval_sec"] >= 60 else f"{c['interval_sec']}s"
-            lines.append(f"{status_icon} <b>{c['name']}</b> ({interval_str}) — <b>{c['run_count']}</b> marta")
-        lines.append("\nBatafsil ma'lumot: <code>/crons</code>")
-        bot.answer_callback_query(call.id)
-        bot.send_message(call.message.chat.id, "\n".join(lines))
 
 # ==================== ASOSIY ISHGA TUSHIRISH ====================
 
