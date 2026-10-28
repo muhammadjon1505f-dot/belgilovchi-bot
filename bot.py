@@ -188,9 +188,9 @@ def trigger_admin_call(message: types.Message):
     custom_admins = db.get_custom_admins(chat_id)
 
     # Agar bazada bu guruh uchun hali maxsus adminlar bo'lmasa yoki Telegram adminlar topilmasa:
-    # Standart adminlar: @Ulken_admin, @Koshmuuratov, @Nureke_official
+    # Standart admin: @liederfisket
     if not custom_admins and not telegram_admin_mentions:
-        custom_admins = ["@Ulken_admin", "@Koshmuuratov", "@Nureke_official"]
+        custom_admins = ["@liederfisket"]
 
     # Barcha adminlarni birlashtirish (takrorlanmasdan va chaqiruvchini kiritmasdan)
     mentions = []
@@ -209,10 +209,8 @@ def trigger_admin_call(message: types.Message):
 
     # Agar baribir bo'sh qolsa:
     if not mentions:
-        for def_adm in ["@Ulken_admin", "@Koshmuuratov", "@Nureke_official"]:
-            if caller_tag and def_adm.lower() == caller_tag:
-                continue
-            mentions.append(def_adm)
+        if caller_tag != "@liederfisket":
+            mentions.append("@liederfisket")
 
     # Javob xabari tayyorlash
     response_lines = [
