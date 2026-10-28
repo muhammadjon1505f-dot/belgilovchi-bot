@@ -164,27 +164,55 @@ def trigger_admin_call(message: types.Message):
     text = message.text or message.caption or ""
     reason = re.sub(r'(?i)@admins?\b', '', text).strip()
 
-    # Guruh adminlarini olish
+    caller_id = user.id if user else None
+    caller_username = (user.username or "").lower() if user else ""
+    caller_mention = format_user_mention(user) if user else "Anonim Admin"
+
+    # Guruh adminlarini olish (Telegram API)
+    telegram_admin_mentions = []
     try:
         admins = bot.get_chat_administrators(chat_id)
+        for a in admins:
+            if a.user.is_bot:
+                continue
+            # Chaqiruvchining o'zini adminlar ro'yxatidan chiqarib tashlaymiz
+            if caller_id and a.user.id == caller_id:
+                continue
+            if caller_username and (a.user.username or "").lower() == caller_username:
+                continue
+            telegram_admin_mentions.append(format_user_mention(a.user))
     except Exception as e:
         logger.error(f"Adminlarni olishda xatolik: {e}")
-        bot.reply_to(
-            message,
-            "⚠️ Adminlar ro'yxatini olib bo'lmadi. Iltimos, botga guruhda adminlik huquqini bering!"
-        )
-        return
 
-    # Faqat bot bo'lmagan adminlarni ajratish
-    human_admins = [a.user for a in admins if not a.user.is_bot]
+    # Guruh uchun maxsus sozlangan adminlar (bazadan)
+    custom_admins = db.get_custom_admins(chat_id)
 
-    if not human_admins:
-        bot.reply_to(message, "Guruhda hech qanday inson-admin topilmadi.")
-        return
+    # Agar bazada bu guruh uchun hali maxsus adminlar bo'lmasa yoki Telegram adminlar topilmasa:
+    # Standart adminlar: @Ulken_admin, @Koshmuuratov, @Nureke_official
+    if not custom_admins and not telegram_admin_mentions:
+        custom_admins = ["@Ulken_admin", "@Koshmuuratov", "@Nureke_official"]
 
-    # Adminlarni formatlash
-    mentions = [format_user_mention(a) for a in human_admins]
-    caller_mention = format_user_mention(user)
+    # Barcha adminlarni birlashtirish (takrorlanmasdan va chaqiruvchini kiritmasdan)
+    mentions = []
+    seen = set()
+    caller_tag = f"@{caller_username}".lower() if caller_username else ""
+
+    for m in (custom_admins + telegram_admin_mentions):
+        m_str = str(m).strip()
+        if not m_str:
+            continue
+        if caller_tag and m_str.lower() == caller_tag:
+            continue
+        if m_str.lower() not in seen:
+            seen.add(m_str.lower())
+            mentions.append(m_str)
+
+    # Agar baribir bo'sh qolsa:
+    if not mentions:
+        for def_adm in ["@Ulken_admin", "@Koshmuuratov", "@Nureke_official"]:
+            if caller_tag and def_adm.lower() == caller_tag:
+                continue
+            mentions.append(def_adm)
 
     # Javob xabari tayyorlash
     response_lines = [
@@ -213,6 +241,36 @@ def trigger_admin_call(message: types.Message):
     except Exception as e:
         logger.error(f"Xabar yuborishda xatolik: {e}")
         bot.send_message(chat_id, final_text)
+
+# ==================== ADMINLARNI BELGILASH (/setadmins) ====================
+
+@bot.message_handler(commands=["setadmins"])
+def handle_set_admins(message: types.Message):
+    chat_id = message.chat.id
+    if message.chat.type not in ("group", "supergroup"):
+        bot.reply_to(message, "ℹ️ Bu buyruq faqat guruhlarda ishlaydi!")
+        return
+
+    if not is_sender_admin(message):
+        bot.reply_to(message, "⛔ Bu buyruqdan faqat guruh adminlari foydalana oladi!")
+        return
+
+    text = message.text or ""
+    mentions = [w for w in text.split() if w.startswith("@") and len(w) > 1]
+    if not mentions:
+        bot.reply_to(
+            message,
+            "ℹ️ Guruh adminlarini belgilash uchun ularning username'larini yozing:\n"
+            "Misol: <code>/setadmins @Ulken_admin @Koshmuuratov @Nureke_official</code>"
+        )
+        return
+
+    db.set_custom_admins(chat_id, mentions)
+    bot.reply_to(
+        message,
+        f"✅ <b>Guruh adminlari ro'yxati saqlandi:</b>\n{' '.join(mentions)}\n\n"
+        f"Endi <code>@admin</code> yoki <code>@admins</code> yozilganda shu adminlar chaqiriladi."
+    )
 
 # ==================== A'ZOLARNI BELGILASH (/tag, /all, /metka, /stop) ====================
 

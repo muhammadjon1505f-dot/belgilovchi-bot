@@ -53,6 +53,12 @@ class Database:
                     reason TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
+
+                CREATE TABLE IF NOT EXISTS chat_custom_admins (
+                    chat_id INTEGER,
+                    mention TEXT,
+                    PRIMARY KEY (chat_id, mention)
+                );
             """)
 
     def add_or_update_user(self, user_id: int, first_name: str, username: str = None):
@@ -120,3 +126,14 @@ class Database:
                 "total_calls": total_calls,
                 "total_tracked_members": total_tracked_members,
             }
+
+    def get_custom_admins(self, chat_id: int):
+        with self._get_connection() as conn:
+            cur = conn.execute("SELECT mention FROM chat_custom_admins WHERE chat_id = ?", (chat_id,))
+            return [row["mention"] for row in cur.fetchall()]
+
+    def set_custom_admins(self, chat_id: int, mentions: list):
+        with self._get_connection() as conn:
+            conn.execute("DELETE FROM chat_custom_admins WHERE chat_id = ?", (chat_id,))
+            for m in mentions:
+                conn.execute("INSERT OR IGNORE INTO chat_custom_admins (chat_id, mention) VALUES (?, ?)", (chat_id, m.strip()))
