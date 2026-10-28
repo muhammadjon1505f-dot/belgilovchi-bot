@@ -12,6 +12,7 @@ from telebot import types
 import config
 from database import Database
 from web_server import start_health_server_in_background
+from cron_manager import CronManager
 
 # Logging
 logging.basicConfig(
@@ -27,6 +28,9 @@ bot = telebot.TeleBot(config.BOT_TOKEN, parse_mode="HTML")
 # In-memory trackers
 user_cooldowns = {}     # (chat_id, user_id) -> timestamp
 active_tags = set()     # chat_ids currently running /tag process
+
+# Initialize 10 Internal Automated Crons
+cron_manager = CronManager(bot, db, user_cooldowns, active_tags)
 
 def escape_html(text: str) -> str:
     if not text:
@@ -75,7 +79,8 @@ def handle_start(message: types.Message):
     )
     btn_help = types.InlineKeyboardButton("📖 Qo'llanma va Buyruqlar", callback_data="help_menu")
     btn_stats = types.InlineKeyboardButton("📊 Bot Statistikasi", callback_data="bot_stats")
-    markup.add(btn_add, btn_help, btn_stats)
+    btn_crons = types.InlineKeyboardButton("⏱ 10 ta Avtomatik Cron Holati", callback_data="bot_crons")
+    markup.add(btn_add, btn_help, btn_stats, btn_crons)
 
     text = (
         f"👋 <b>Assalomu alaykum, {escape_html(user.first_name)}!</b>\n\n"
@@ -326,6 +331,25 @@ def handle_my_chat_member(update: types.ChatMemberUpdated):
 
 # ==================== ADMIN BUYRUQLARI VA STATISTIKA ====================
 
+@bot.message_handler(commands=["crons", "cron"])
+def handle_crons_command(message: types.Message):
+    """Botning 10 ta avtomatik cron vazifalari holatini chiqarish."""
+    crons = cron_manager.get_status_list()
+    lines = [
+        "⏱ <b>Botning 10 ta Avtomatik Ichki Cron Vazifalari:</b>\n"
+    ]
+    for idx, c in enumerate(crons, 1):
+        status_icon = "🟢" if c["status"] in ("OK", "Idle", "Running") else "🔴"
+        interval_min = round(c["interval_sec"] / 60, 1) if c["interval_sec"] >= 60 else f"{c['interval_sec']} soniya"
+        lines.append(
+            f"{status_icon} <b>{c['name']}</b>\n"
+            f"   • Takrorlanish: har <b>{interval_min}</b> da\n"
+            f"   • Bajarildi: <b>{c['run_count']}</b> marta | Holat: <code>{c['status']}</code>\n"
+            f"   • Keyingisi: <b>{c['next_in_sec']}</b> soniyadan keyin\n"
+        )
+    lines.append("⚡ <i>Barcha cron vazifalari to'liq bot ichida fon rejimida 24/7 ishlamoqda.</i>")
+    bot.reply_to(message, "\n".join(lines))
+
 @bot.message_handler(commands=["stats"])
 def handle_stats_command(message: types.Message):
     user = message.from_user
@@ -339,6 +363,7 @@ def handle_stats_command(message: types.Message):
         f"👥 Faol guruhlar soni: <b>{stats['total_groups']}</b> ta\n"
         f"📝 Ro'yxatga olingan guruh a'zolari: <b>{stats['total_tracked_members']}</b> ta\n"
         f"🚨 Jami admin chaqiruvlari: <b>{stats['total_calls']}</b> ta\n"
+        f"⏱ Ichki Cron Vazifalari: <b>10/10 Faol</b>\n"
         f"⚡ Holati: <b>24/7 Onlayn</b>"
     )
     bot.reply_to(message, text)
@@ -353,7 +378,8 @@ def handle_callback(call: types.CallbackQuery):
             "• <code>/admin [sabab]</code> — Barcha adminlarni chaqiradi.\n"
             "• <code>@admin</code> — Xabarga javob orqali adminni chaqirish.\n"
             "• <code>/tag [matn]</code> — Guruh a'zolariga e'lon yuborish (adminlar uchun).\n"
-            "• <code>/stop</code> — Belgilashni to'xtatish.\n\n"
+            "• <code>/stop</code> — Belgilashni to'xtatish.\n"
+            "• <code>/crons</code> — Botning 10 ta avtomatik cron holati.\n\n"
             "Botni guruhga qo'shing va adminlik huquqini bering!"
         )
         bot.answer_callback_query(call.id)
@@ -365,10 +391,21 @@ def handle_callback(call: types.CallbackQuery):
             f"• Faol guruhlar: <b>{stats['total_groups']}</b> ta\n"
             f"• Foydalanuvchilar: <b>{stats['total_users']}</b> ta\n"
             f"• Admin chaqiruvlari: <b>{stats['total_calls']}</b> marta\n"
+            f"• Ichki Cron Vazifalari: <b>10 ta doimiy faol</b>\n"
             f"• Server: <b>24/7 Faol</b>"
         )
         bot.answer_callback_query(call.id)
         bot.send_message(call.message.chat.id, text)
+    elif call.data == "bot_crons":
+        crons = cron_manager.get_status_list()
+        lines = ["⏱ <b>Botning 10 ta Avtomatik Cron Vazifalari:</b>\n"]
+        for c in crons:
+            status_icon = "🟢" if c["status"] in ("OK", "Idle", "Running") else "🔴"
+            interval_str = f"{round(c['interval_sec']/60, 1)} daq" if c["interval_sec"] >= 60 else f"{c['interval_sec']}s"
+            lines.append(f"{status_icon} <b>{c['name']}</b> ({interval_str}) — <b>{c['run_count']}</b> marta")
+        lines.append("\nBatafsil ma'lumot: <code>/crons</code>")
+        bot.answer_callback_query(call.id)
+        bot.send_message(call.message.chat.id, "\n".join(lines))
 
 # ==================== ASOSIY ISHGA TUSHIRISH ====================
 
@@ -377,8 +414,12 @@ def main():
     bot_info = bot.get_me()
     logger.info(f"Connected as @{bot_info.username} (ID: {bot_info.id})")
 
+    # 10 ta avtomatik ichki cron vazifalarini ishga tushirish
+    cron_manager.start()
+    logger.info("10 ta avtomatik ichki cron vazifalari faollashtirildi")
+
     # Render va 24/7 monitoring uchun HTTP serverni ishga tushirish
-    start_health_server_in_background(port=config.PORT)
+    start_health_server_in_background(port=config.PORT, cron_manager=cron_manager)
     logger.info(f"Health-check web server started on port {config.PORT}")
 
     # Uzluksiz polling sikli (xatolar yuz berganda avtomatik qayta ulanadi)
