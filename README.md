@@ -66,7 +66,7 @@ Render.com da botni bepul va 24/7 ishlatish bo'yicha qadam-baqadam ko'rsatma:
    - **Instance Type:** `Free`
 
 4. **Environment Variables (Muhit O'zgaruvchilari):**
-   - `BOT_TOKEN` = `8976783740:AAHg9cLCSDxpWYWAI_3Mz-0369M3HsjO43o`
+   - `BOT_TOKEN` = `<SIZNING_BOT_TOKENINGIZ>`
    - `PORT` = `10000`
 
 5. **Deploy tugmasini bosing!**

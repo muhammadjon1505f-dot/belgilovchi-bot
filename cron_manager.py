@@ -25,11 +25,12 @@ class CronTask:
         self.last_error = None
 
 class CronManager:
-    def __init__(self, bot, db, cooldowns_dict, active_tags_set):
+    def __init__(self, bot, db, cooldowns_dict, active_tags_set, group_history_dict=None):
         self.bot = bot
         self.db = db
         self.cooldowns = cooldowns_dict
         self.active_tags = active_tags_set
+        self.group_history = group_history_dict if group_history_dict is not None else {}
         self.tasks = []
         self._is_running = False
         self._thread = None
@@ -142,12 +143,24 @@ class CronManager:
             raise
 
     def _cron_clean_cooldowns(self):
-        """Eskirgan foydalanuvchi cooldown vaqtlarini xotiradan tozalash."""
+        """Eskirgan foydalanuvchi cooldown va guruh antiraid vaqtlarini xotiradan tozalash."""
         now = time.time()
         expired_keys = [k for k, last_time in self.cooldowns.items() if now - last_time > 120]
         for k in expired_keys:
             self.cooldowns.pop(k, None)
-        logger.debug(f"[Cron 3] Cooldown tozalandi: {len(expired_keys)} ta yozuv o'chirildi")
+
+        if self.group_history:
+            empty_groups = []
+            for gid, timestamps in list(self.group_history.items()):
+                valid = [t for t in timestamps if now - t < 60]
+                if valid:
+                    self.group_history[gid] = valid
+                else:
+                    empty_groups.append(gid)
+            for gid in empty_groups:
+                self.group_history.pop(gid, None)
+
+        logger.debug(f"[Cron 3] Cooldown va antiraid tozalandi: {len(expired_keys)} ta yozuv o'chirildi")
 
     def _cron_tag_timeout_guard(self):
         """Uzoq qotib qolgan tag jarayonlarini xavfsiz to'xtatish."""

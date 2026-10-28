@@ -26,11 +26,12 @@ db = Database(config.DATABASE_PATH)
 bot = telebot.TeleBot(config.BOT_TOKEN, parse_mode="HTML")
 
 # In-memory trackers
-user_cooldowns = {}     # (chat_id, user_id) -> timestamp
-active_tags = set()     # chat_ids currently running /tag process
+user_cooldowns = {}         # (chat_id, user_id) -> timestamp
+group_call_history = {}     # chat_id -> list of recent call timestamps (antiraid)
+active_tags = set()         # chat_ids currently running /tag process
 
 # Initialize 10 Internal Automated Crons
-cron_manager = CronManager(bot, db, user_cooldowns, active_tags)
+cron_manager = CronManager(bot, db, user_cooldowns, active_tags, group_call_history)
 
 def escape_html(text: str) -> str:
     if not text:
@@ -139,12 +140,21 @@ def trigger_admin_call(message: types.Message):
     last_call = user_cooldowns.get((chat_id, user.id), 0)
     cooldown = config.ADMIN_CALL_COOLDOWN
 
+    # 1. Guruh bo'yicha global antiraid tekshiruvi (1 daqiqada maks 5 chaqiruv)
+    group_calls = [t for t in group_call_history.get(chat_id, []) if now - t < 60]
+    if len(group_calls) >= config.GROUP_MAX_CALLS_PER_MINUTE:
+        bot.reply_to(message, "🛡 <b>Xavfsizlik:</b> Ushbu guruhda admin chaqiruvlari soni oshib ketdi. Spamdan himoya qilish uchun 1 daqiqa kuting.")
+        return
+
+    # 2. Foydalanuvchi shaxsiy cooldown (antispam) tekshiruvi
     if now - last_call < cooldown:
         remaining = int(cooldown - (now - last_call))
         bot.reply_to(message, f"⏳ Iltimos kuting! Siz yana <b>{remaining}</b> soniyadan so'ng adminlarni chaqira olasiz.")
         return
 
     user_cooldowns[(chat_id, user.id)] = now
+    group_calls.append(now)
+    group_call_history[chat_id] = group_calls
 
     # Sabab yoki qo'shimcha matnni aniqlash
     reason = ""

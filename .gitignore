@@ -12,3 +12,7 @@ venv/
 *.log
 test.db*
 .DS_Store
+.env
+*.env
+.secrets
+

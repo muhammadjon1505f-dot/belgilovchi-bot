@@ -10,6 +10,6 @@ services:
     autoDeploy: true
     envVars:
       - key: BOT_TOKEN
-        value: 8976783740:AAHg9cLCSDxpWYWAI_3Mz-0369M3HsjO43o
+        sync: false
       - key: PORT
         value: 10000
