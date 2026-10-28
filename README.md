@@ -1,5 +1,7 @@
 # Belgilovchi Bot (@Belgilaydibot) — 24/7 Guruh Administratorlarini Chaqiruvchi Bot
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/muhammadjon1505f-dot/belgilovchi-bot)
+
 Ushbu bot Telegram guruhlarida a'zolar va administratorlar o'rtasidagi aloqani tezlashtirish, qoidabuzarliklar haqida darhol ogohlantirish va guruh a'zolariga e'lon tarqatish uchun ishlab chiqilgan.
 
 ---
