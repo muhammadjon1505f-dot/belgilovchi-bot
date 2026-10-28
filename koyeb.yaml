@@ -1,0 +1,21 @@
+# Koyeb Deployment Configuration
+# Docs: https://www.koyeb.com/docs/reference/koyeb-yaml
+name: belgilovchi-bot
+services:
+  - name: bot-service
+    type: web
+    git:
+      branch: main
+      build_command: pip install -r requirements.txt
+      run_command: python bot.py
+    ports:
+      - port: 8088
+        path: /healthz
+    env:
+      - key: BOT_TOKEN
+        value: 8976783740:AAHg9cLCSDxpWYWAI_3Mz-0369M3HsjO43o
+      - key: PORT
+        value: "8088"
+    routes:
+      - path: /
+        port: 8088
