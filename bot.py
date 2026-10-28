@@ -187,48 +187,17 @@ def trigger_admin_call(message: types.Message):
     # Guruh uchun maxsus sozlangan adminlar (bazadan)
     custom_admins = db.get_custom_admins(chat_id)
 
-    # Agar bazada bu guruh uchun hali maxsus adminlar bo'lmasa yoki Telegram adminlar topilmasa:
-    # Standart admin: @liederfisket
-    if not custom_admins and not telegram_admin_mentions:
-        custom_admins = ["@liederfisket"]
+    # Standart adminlar: @Ulken_admin @Koshmuuratov @Nureke_official
+    if custom_admins:
+        mentions = custom_admins
+    else:
+        mentions = ["@Ulken_admin", "@Koshmuuratov", "@Nureke_official"]
 
-    # Barcha adminlarni birlashtirish (takrorlanmasdan va chaqiruvchini kiritmasdan)
-    mentions = []
-    seen = set()
-    caller_tag = f"@{caller_username}".lower() if caller_username else ""
-
-    for m in (custom_admins + telegram_admin_mentions):
-        m_str = str(m).strip()
-        if not m_str:
-            continue
-        if caller_tag and m_str.lower() == caller_tag:
-            continue
-        if m_str.lower() not in seen:
-            seen.add(m_str.lower())
-            mentions.append(m_str)
-
-    # Agar baribir bo'sh qolsa:
-    if not mentions:
-        if caller_tag != "@liederfisket":
-            mentions.append("@liederfisket")
-
-    # Javob xabari tayyorlash
-    response_lines = [
-        "🚨 <b>DIQQAT, ADMINLAR!</b>",
-        f"👤 <b>Chaqiruvchi:</b> {caller_mention}",
-    ]
-
+    # Ortiqcha so'zlarsiz, shunchaki @ @ @ ro'yxati
     if reason:
-        response_lines.append(f"💬 <b>Sabab:</b> {escape_html(reason)}")
-
-    if message.reply_to_message:
-        replied_user = message.reply_to_message.from_user
-        response_lines.append(f"📌 <b>Shikoyat qilingan foydalanuvchi:</b> {format_user_mention(replied_user)}")
-
-    response_lines.append("")
-    response_lines.append("👑 <b>Adminlar:</b> " + " ".join(mentions))
-
-    final_text = "\n".join(response_lines)
+        final_text = f"{' '.join(mentions)}\n\n{escape_html(reason)}"
+    else:
+        final_text = " ".join(mentions)
 
     try:
         if message.reply_to_message:
