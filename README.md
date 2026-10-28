@@ -16,7 +16,6 @@ Ushbu bot Telegram guruhlarida a'zolar va administratorlar o'rtasidagi aloqani t
 2. **A'zolarni metka qilish (`/tag`, `/all`, `/metka`):**
    - Faqat guruh adminlari uchun ruxsat etilgan.
    - Guruhdagi faol a'zolarni 5 tadan bo'lib spam-filtrga tushmasdan e'lon bilan belgilaydi.
-   - `/stop` buyrug'i orqali istalgan vaqt to'xtatish mumkin.
 
 3. **Statistika va Ma'lumotlar Bazasi:**
    - SQLite WAL rejimida ishlaydi.

@@ -86,8 +86,7 @@ def handle_start(message: types.Message):
         f"👑 Guruhda:\n"
         f"• /admin [sabab] — Barcha adminlarni zudlik bilan chaqiradi.\n"
         f"• @admin [sabab] — Xabarga javob berib yozilsa, qoidabuzarlik haqida xabar beradi.\n"
-        f"• /tag [xabar] — Guruh a'zolariga e'lon yuborish (faqat adminlar uchun).\n"
-        f"• /stop — Belgilash jarayonini to'xtatish.\n\n"
+        f"• /tag [xabar] — Guruh a'zolariga e'lon yuborish (faqat adminlar uchun).\n\n"
         f"🚀 Ishlatish: Quyidagi tugma orqali botni guruhingizga qo'shing va adminlik bering!"
     )
     bot.send_message(message.chat.id, text, reply_markup=markup)
@@ -237,8 +236,7 @@ def handle_tag_members(message: types.Message):
     bot.reply_to(
         message,
         f"📢 <b>Belgilash boshlandi!</b>\n"
-        f"Jami a'zolar: {len(members)} ta.\n"
-        f"To'xtatish uchun: <code>/stop</code>"
+        f"Jami a'zolar: {len(members)} ta."
     )
 
     # Alohida oqimda jo'natish
@@ -272,24 +270,6 @@ def handle_tag_members(message: types.Message):
 
     thread = threading.Thread(target=run_tagging, daemon=True)
     thread.start()
-
-@bot.message_handler(commands=["stop", "cancel"])
-def handle_stop_tag(message: types.Message):
-    chat_id = message.chat.id
-    user = message.from_user
-
-    if message.chat.type not in ("group", "supergroup"):
-        return
-
-    if not is_chat_admin(chat_id, user.id) and user.id not in config.ADMIN_IDS:
-        bot.reply_to(message, "⛔ Faqat adminlar to'xtatishi mumkin!")
-        return
-
-    if chat_id in active_tags:
-        active_tags.discard(chat_id)
-        bot.reply_to(message, "🛑 <b>Belgilash jarayoni muvaffaqiyatli to'xtatildi.</b>")
-    else:
-        bot.reply_to(message, "Hozirda faol belgilash jarayoni mavjud emas.")
 
 # ==================== FOYDALANUVCHILARNI KUZATISH ====================
 
