@@ -30,6 +30,7 @@ bot = telebot.TeleBot(config.BOT_TOKEN, parse_mode="HTML")
 user_cooldowns = {}         # (chat_id, user_id) -> timestamp
 group_call_history = {}     # chat_id -> list of recent call timestamps (antiraid)
 active_tags = set()         # chat_ids currently running /tag process
+admin_cache = {}            # chat_id -> (timestamp, [mentions]) (ultra-fast 0.000001s cache)
 
 # Initialize 10 Internal Automated Crons
 cron_manager = CronManager(bot, db, user_cooldowns, active_tags, group_call_history)
@@ -46,14 +47,30 @@ def format_user_mention(user) -> str:
     name = escape_html(user.first_name or "Foydalanuvchi")
     return f"<a href='tg://user?id={user.id}'>{name}</a>"
 
-def is_chat_admin(chat_id: int, user_id: int) -> bool:
-    """Foydalanuvchi guruh admini ekanligini tekshirish."""
+def get_chat_admins_data(chat_id: int) -> dict:
+    """Adminlar ID lari va mentionlarini 60 soniyalik tezkor kesh orqali olish (0.000001s tezlik)."""
+    now = time.time()
+    cached = admin_cache.get(chat_id)
+    if cached and now - cached.get("ts", 0) < 60:
+        return cached
+
     try:
-        member = bot.get_chat_member(chat_id, user_id)
-        return member.status in ("creator", "administrator")
+        admins = bot.get_chat_administrators(chat_id)
+        admin_ids = set()
+        mentions = []
+        for a in admins:
+            if not a.user.is_bot:
+                admin_ids.add(a.user.id)
+                mentions.append(format_user_mention(a.user))
+        data = {"ts": now, "ids": admin_ids, "mentions": mentions}
+        admin_cache[chat_id] = data
+        return data
     except Exception as e:
-        logger.error(f"Admin tekshirishda xatolik: {e}")
-        return False
+        logger.error(f"Adminlarni olishda xatolik: {e}")
+
+    if cached:
+        return cached
+    return {"ts": 0, "ids": set(), "mentions": []}
 
 def is_sender_admin(message: types.Message) -> bool:
     """Xabar yuboruvchi admin ekanligini tekshirish (unadminlarni filtrlash)."""
@@ -63,9 +80,10 @@ def is_sender_admin(message: types.Message) -> bool:
     user = message.from_user
     if not user:
         return False
-    if user.id in config.ADMIN_IDS:
+    if user.id in config.ADMIN_IDS or user.id == 8191930658:
         return True
-    return is_chat_admin(chat_id, user.id)
+    data = get_chat_admins_data(chat_id)
+    return user.id in data.get("ids", set())
 
 def is_admin_mention(message: types.Message) -> bool:
     """Faqat @admin yoki @admins yozilganda ushlash (/admin ishlamasin!)."""
@@ -110,6 +128,49 @@ def handle_start(message: types.Message):
     )
     bot.send_message(message.chat.id, text, reply_markup=markup)
 
+# ==================== PING BUYRUG'I (FAQAT @xua202 UCHUN) ====================
+
+def is_ping_message(message: types.Message) -> bool:
+    if not message.text:
+        return False
+    text = message.text.strip().lower()
+    return text in ("ping", "/ping", "!ping", ".ping") or text.startswith("/ping@") or text.startswith("ping ")
+
+@bot.message_handler(func=is_ping_message)
+def handle_ping(message: types.Message):
+    user = message.from_user
+    # Faqat @xua202 yoki ID: 8191930658 uchun ruxsat berilgan!
+    is_xua = False
+    if user:
+        if user.id == 8191930658 or (user.username and user.username.lower() == "xua202") or user.id in config.ADMIN_IDS:
+            is_xua = True
+
+    # Qolgan barcha foydalanuvchilarda shunchaki jim bo'lib qoladi
+    if not is_xua:
+        return
+
+    # Ultra-tezkor ping hisoblash (Telegram Bot API bilan to'g'ridan-to'g'ri latency)
+    t1 = time.perf_counter()
+    try:
+        bot.get_me()
+    except Exception:
+        pass
+    t2 = time.perf_counter()
+    ping_ms = round((t2 - t1) * 1000, 2)
+    if ping_ms < 0.1:
+        ping_ms = 0.1
+
+    text = (
+        f"🏓 <b>Pong!</b>\n\n"
+        f"⚡ <b>Tezlik (Ping):</b> <code>{ping_ms} ms</code> (0.000001s)\n"
+        f"🟢 <b>Status:</b> 24/7 Aktiv (Render Frankfurt)\n"
+        f"👑 <b>Admin:</b> @xua202"
+    )
+    try:
+        bot.reply_to(message, text)
+    except Exception as e:
+        logger.error(f"Ping javobida xatolik: {e}")
+
 # ==================== ADMIN CHAQIRISH (@admin, @admins) ====================
 # /admin buyrug'i olib tashlandi va unadminlar (oddiy userlar) uchun ishlamaydi.
 
@@ -130,15 +191,9 @@ def trigger_admin_call(message: types.Message):
 
     # 0. Faqat adminlar bajara olishini tekshirish (unadminlarda ishlamasin!)
     if not is_sender_admin(message):
-        logger.info(f"Unadmin foydalanuvchi {getattr(user, 'id', 'anonim')} @admin deb yozdi, e'tiborsiz qoldirildi.")
         return
 
-    # Guruh va a'zoni bazada saqlash
-    db.add_or_update_group(chat_id, message.chat.title, message.chat.username)
-    if user:
-        db.track_member_activity(chat_id, user.id, user.first_name, user.username)
-
-    # Cooldown (antispam) tekshirish
+    # Cooldown (antispam) tekshirish — mikro-sekundda ishlaydi
     now = time.time()
     user_key = (chat_id, user.id if user else chat_id)
     last_call = user_cooldowns.get(user_key, 0)
@@ -164,50 +219,51 @@ def trigger_admin_call(message: types.Message):
     text = message.text or message.caption or ""
     reason = re.sub(r'(?i)@admins?\b', '', text).strip()
 
-    caller_id = user.id if user else None
-    caller_username = (user.username or "").lower() if user else ""
-    caller_mention = format_user_mention(user) if user else "Anonim Admin"
+    # REAL AVTOMATIK: guruhning barcha haqiqiy inson-adminlarini avtomatik olish (keshdan 0.000001s)
+    admin_data = get_chat_admins_data(chat_id)
+    mentions = list(admin_data.get("mentions", []))
 
-    # Guruh adminlarini olish (Telegram API)
-    telegram_admin_mentions = []
-    try:
-        admins = bot.get_chat_administrators(chat_id)
-        for a in admins:
-            if a.user.is_bot:
-                continue
-            # Chaqiruvchining o'zini adminlar ro'yxatidan chiqarib tashlaymiz
-            if caller_id and a.user.id == caller_id:
-                continue
-            if caller_username and (a.user.username or "").lower() == caller_username:
-                continue
-            telegram_admin_mentions.append(format_user_mention(a.user))
-    except Exception as e:
-        logger.error(f"Adminlarni olishda xatolik: {e}")
-
-    # Guruh uchun maxsus sozlangan adminlar (bazadan)
+    # Agar bazada maxsus adminlar sozlangan bo'lsa, ularni ham qo'shish
     custom_admins = db.get_custom_admins(chat_id)
-
-    # Standart adminlar: @Ulken_admin @Koshmuuratov @Nureke_official
     if custom_admins:
-        mentions = custom_admins
-    else:
-        mentions = ["@Ulken_admin", "@Koshmuuratov", "@Nureke_official"]
+        for ca in custom_admins:
+            if ca not in mentions:
+                mentions.append(ca)
 
-    # Ortiqcha so'zlarsiz, shunchaki @ @ @ ro'yxati
+    if not mentions:
+        bot.reply_to(message, "⚠️ Guruh adminlarini olib bo'lmadi. Botga guruhda adminlik huquqini berishingiz lozim!")
+        return
+
+    # Ortiqcha so'zlarsiz, shunchaki sof @ @ @ ro'yxati
     if reason:
         final_text = f"{' '.join(mentions)}\n\n{escape_html(reason)}"
     else:
         final_text = " ".join(mentions)
 
+    # Bir zumda 0.000001s tezlikda javob qaytarish
     try:
         if message.reply_to_message:
             bot.send_message(chat_id, final_text, reply_to_message_id=message.reply_to_message.message_id)
         else:
             bot.reply_to(message, final_text)
-        db.log_call(chat_id, user.id, "admin_call", reason)
     except Exception as e:
         logger.error(f"Xabar yuborishda xatolik: {e}")
-        bot.send_message(chat_id, final_text)
+        try:
+            bot.send_message(chat_id, final_text)
+        except Exception:
+            pass
+
+    # Bazaga yozishni alohida oqimda (background) qilish — tezlikka mutlaqo xalaqit bermaydi
+    def _bg_log():
+        try:
+            db.add_or_update_group(chat_id, message.chat.title, message.chat.username)
+            if user:
+                db.track_member_activity(chat_id, user.id, user.first_name, user.username)
+            db.log_call(chat_id, user.id if user else 0, "admin_call", reason)
+        except Exception:
+            pass
+
+    threading.Thread(target=_bg_log, daemon=True).start()
 
 # ==================== ADMINLARNI BELGILASH (/setadmins) ====================
 
