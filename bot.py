@@ -118,12 +118,11 @@ def handle_start(message: types.Message):
 
     text = (
         f"👋 Assalomu alaykum, {escape_html(user.first_name)}!\n\n"
-        f"⚡ Men Belgilovchi bot (@{bot_info.username}) — guruhlarda adminlarni va a'zolarni "
-        f"bir zumda chaqirib (metka / tag qilib) beruvchi professional botman.\n\n"
+        f"⚡ Men Belgilovchi bot (@{bot_info.username}) — guruhlarda adminlarni "
+        f"bir zumda chaqirib beruvchi professional botman.\n\n"
         f"👑 Guruhda:\n"
         f"• @admin [sabab] — Barcha adminlarni zudlik bilan chaqiradi (faqat adminlar uchun).\n"
-        f"• @admins [sabab] — Adminlarni chaqirish.\n"
-        f"• /tag [xabar] — Guruh a'zolariga e'lon yuborish (faqat adminlar uchun).\n\n"
+        f"• @admins [sabab] — Adminlarni chaqirish.\n\n"
         f"🚀 Ishlatish: Quyidagi tugma orqali botni guruhingizga qo'shing va adminlik bering!"
     )
     bot.send_message(message.chat.id, text, reply_markup=markup)
@@ -307,7 +306,7 @@ def handle_tag_members(message: types.Message):
         return
 
     # Faqat adminlar bajara olishini tekshirish
-    if not is_chat_admin(chat_id, user.id) and user.id not in config.ADMIN_IDS:
+    if not is_sender_admin(message):
         bot.reply_to(message, "⛔ Bu buyruqdan faqat guruh adminlari foydalana oladi!")
         return
 
@@ -392,7 +391,6 @@ def handle_my_chat_member(update: types.ChatMemberUpdated):
                 chat.id,
                 "🎉 <b>Salom! Men Belgilovchi botman.</b>\n\n"
                 "Guruhda adminlarni chaqirish uchun <code>@admin</code> yoki <code>@admins</code> deb yozing (faqat adminlar uchun).\n"
-                "A'zolarni metka qilish uchun: <code>/tag</code>\n"
                 "Bot qulay ishlashi uchun unga <b>Adminlik huquqini</b> berishingiz tavsiya etiladi."
             )
         except Exception as e:
